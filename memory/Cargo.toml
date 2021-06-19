@@ -1,0 +1,32 @@
+[package]
+name = "memory"
+version = "0.1.0"
+authors = ["xxx <xxx@163.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+bytes = "1"
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+jemallocator = "0.3.2"
+libc = "0"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "burn-tokio-task"
+path = "src/main_burn_tokio_task.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "burn-tokio-task-jemalloc"
+path = "src/main_jemalloc.rs"
+test = false
+bench = false
