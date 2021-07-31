@@ -150,7 +150,7 @@ async fn test_mem_size() {
     print_future_size("async_fn6", async_fn6()).await;
     print_future_size("async_fn7", async_fn7()).await;
 
-    const MAX_TASKS:u64 = 2_000_000;
+    const MAX_TASKS:u64 = 1_000_000;
 
     let fut = make_future();
     let fut_size = std::mem::size_of_val(&fut);
