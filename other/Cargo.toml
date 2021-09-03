@@ -15,3 +15,6 @@ tracing = { version = "^0.1.26", features = ["max_level_trace", "release_max_lev
 tracing-subscriber = "^0.2.19"
 clap = "3.0.0-beta.2"
 sysinfo = "0.19.2"
+chrono = "0.4.19"
+anyhow = "1.0.43"
+csv = "1.1.6"
