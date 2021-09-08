@@ -411,7 +411,7 @@ struct Nodes {
 impl Nodes {
     async fn init(&self, n: u64) -> Result<()> {
         let mut nodes = self.data.write().await;
-        for nid in 0..n {
+        for nid in 1..n+1 {
             let node = Node::new(nid)?;
             nodes.insert(node.id, Arc::new(node));
         }
@@ -437,7 +437,7 @@ async fn run_main() -> Result<()> {
     let node0;
 
     {
-        let nid0 = 0;
+        let nid0 = 1;
         node0 = get_nodes().get(&nid0).await.unwrap();
         members.insert(nid0);
         node0.raft.initialize(members.clone()).await?;
@@ -454,21 +454,26 @@ async fn run_main() -> Result<()> {
     }
 
     {
-        let nid1 = 1;
+        let nid1 = 2;
         node0.raft.add_non_voter(nid1).await?;
         members.insert(nid1);
         node0.raft.change_membership(members.clone()).await?;
     }
 
     {
-        let nid2 = 2;
+        let nid2 = 3;
         node0.raft.add_non_voter(nid2).await?;
         members.insert(nid2);
         node0.raft.change_membership(members.clone()).await?;
     }
 
-    node0.raft.client_write(ClientWriteRequest::new(ClientRequest{req_id: 1})).await?;
-    
+    {
+        let d = Duration::from_millis(2000);
+        debug!("waiting for {:?}", d);
+        tokio::time::sleep(d).await;
+        node0.raft.client_write(ClientWriteRequest::new(ClientRequest{req_id: 1})).await?;
+    }
+
     Ok(())
 }
 
