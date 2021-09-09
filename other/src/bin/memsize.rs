@@ -80,6 +80,23 @@ macro_rules! print_futures_size {
     };
 }
 
+fn test_channel_mem() {
+    println!("press Enter to alloc channels...");
+    let _ = std::io::Read::read(&mut std::io::stdin(), &mut [0u8]).unwrap();
+    let mut v = Vec::new();
+    for _n in 0..1_000_000 {
+        //let (tx, rx) = tokio::sync::mpsc::channel::<usize>(1);
+        // let (tx, rx) = futures::channel::mpsc::channel::<usize>(1);
+        let (tx, rx) = tokio::sync::oneshot::channel::<usize>();
+        v.push((tx, rx));
+    }
+    // println!("alloc channels done, trim {}", call_malloc_trim());
+    println!("press Enter to continue...");
+    let _ = std::io::Read::read(&mut std::io::stdin(), &mut [0u8]).unwrap();
+    std::process::exit(0);
+}
+
+
 #[tokio::main]
 async fn main() {
     // Sleep: https://github.com/tokio-rs/tokio/blob/f3ed064a269fd72711e40121dad1a9fd9f16bdc0/tokio/src/time/driver/sleep.rs#L164

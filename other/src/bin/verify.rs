@@ -1,16 +1,25 @@
+use std::any::Any;
+use std::num::NonZeroI64;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::thread;
 use std::time::Duration;
+use futures::FutureExt;
+use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use futures::task::AtomicWaker;
 use sysinfo::ProcessExt;
 use sysinfo::SystemExt;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
+use tokio::time;
 use tracing::info;
 use core::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use std::sync::atomic::Ordering;
-use std::thread;
+
 
 struct TimerFuture {
     shared_state: Arc<SharedState>,
@@ -191,6 +200,217 @@ async fn test_mem_size() {
     std::process::exit(0);
 }
 
+fn overflow_fn() {
+    println!("overflow_fn");
+    let v = [0u8; 1*1024*1024*1024];
+    println!("  v size {}", std::mem::size_of_val(&v));
+}
+
+async fn overflow_async() {
+    println!("overflow_async");
+    use std::io::Write;
+    let _r = std::io::stdout().flush();
+    let v = [0u8; 1*1024*1024*1024];
+    println!("  v size {}", std::mem::size_of_val(&v));
+}
+
+const ONE_MS: Duration = Duration::from_millis(1);
+
+macro_rules! print_futures_size {
+    ($type: ty) => {
+            println!("{:48} : {}", stringify!($type), std::mem::size_of::<$type>());
+    };
+    ($($gen_future: expr),*) => {
+        $(
+            println!("{:48} : {}", stringify!($gen_future), std::mem::size_of_val(&$gen_future));
+        )*
+    };
+}
+
+async fn fn_blank() {
+
+}
+
+async fn big_var_directly() {
+    println!("  big_var_directly");
+    let v = [0u8; 128*1024*1024];
+    println!("    simple: v[0]={}", v[0]);
+    println!("    simple: v[last]={}", v[v.len()-1]);
+}
+
+async fn big_var_cross_await() {
+    println!("  big_var_cross_await");
+    use std::io::Write;
+    let _r = std::io::stdout().flush();
+    let mut v = [0u8; 128*1000*1000];
+    println!("    before cross await: v[0]={}", v[0]);
+    println!("    before cross await: v[last]={}", v[v.len()-1]);
+    time::sleep(ONE_MS).await;
+    v[0] = 1;
+    println!("    after cross await: v[0]={}", v[0]);
+    println!("    after cross await: v[last]={}", v[v.len()-1]);
+    println!("    v addr {}", std::ptr::addr_of!(v) as usize);
+}
+
+
+async fn wrapp_big_var_cross_await_1() {
+    big_var_cross_await().await;
+}
+
+async fn wrapp_big_var_cross_await_2() {
+    wrapp_big_var_cross_await_1().await;
+}
+
+
+async fn not_overflow() {
+
+    
+    {
+        let n = 10u64;
+        let fut = big_var_cross_await();
+        let p1 = std::ptr::addr_of!(n) as usize;
+        let p2 = std::ptr::addr_of!(fut) as usize;
+        println!("not_overflow, n addr {}, fut addr {}, fut size {}, addr diff {}", p1, p2, std::mem::size_of_val(&fut), p1-p2);
+        fut.await;
+    }
+}
+
+async fn expect_overflow() {
+    println!("expect_overflow");
+    big_var_directly().await;
+}
+
+
+
+async fn test_over_flow() {
+    // fn_big_local_var().await;
+    // expect_overflow().await;
+    let fut = Box::pin(not_overflow());
+    print_futures_size!(fn_blank(), fut);
+    fut.await;
+    // Box::pin(not_overflow()).await;
+    Box::pin(expect_overflow()).await;
+    std::process::exit(0);
+}
+
+
+fn test_opt_size() {
+    println!(
+        "i8 {}, opt {}", 
+        std::mem::size_of_val(&1i8),
+        std::mem::size_of_val(&Some(1i8))
+    );
+
+    println!(
+        "u8 {}, opt {}", 
+        std::mem::size_of_val(&1u8),
+        std::mem::size_of_val(&Some(1u8))
+    );
+
+    println!(
+        "i16 {}, opt {}", 
+        std::mem::size_of_val(&1i16),
+        std::mem::size_of_val(&Some(1i16))
+    );
+
+    println!(
+        "u16 {}, opt {}", 
+        std::mem::size_of_val(&1u16),
+        std::mem::size_of_val(&Some(1u16))
+    );
+
+    println!(
+        "i32 {}, opt {}", 
+        std::mem::size_of_val(&1i32),
+        std::mem::size_of_val(&Some(1i32))
+    );
+
+    println!(
+        "u32 {}, opt {}", 
+        std::mem::size_of_val(&1u32),
+        std::mem::size_of_val(&Some(1u32))
+    );
+
+    println!(
+        "i64 {}, opt {}", 
+        std::mem::size_of_val(&1i64),
+        std::mem::size_of_val(&Some(1i64))
+    );
+
+    println!(
+        "u64 {}, opt {}", 
+        std::mem::size_of_val(&1u64),
+        std::mem::size_of_val(&Some(1u64))
+    );
+
+    println!(
+        "i64 {}, opt {}", 
+        std::mem::size_of_val(&1i64),
+        std::mem::size_of_val(&Some(1i64))
+    );
+
+    println!(
+        "NonZeroI64 opt {}", 
+        std::mem::size_of_val(&NonZeroI64::new(1))
+    );
+
+    let n = NonZeroI64::new(0);
+    println!("NonZeroI64(0) {:?}, NonZeroI64(1) {:?}", NonZeroI64::new(0), NonZeroI64::new(1));
+    
+
+    std::process::exit(0);
+}
+
+
+
+async fn try_recv0<T>(rx: &mut tokio::sync::mpsc::Receiver<T>) -> Option<T> {
+    
+    futures::select! {
+        r = rx.recv().fuse() => {
+            return r;
+        }
+        default => {
+            return None;
+        }
+    };
+
+}
+async fn test_try_recv() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+    println!("try_recv 1 {:?}", try_recv0(&mut rx).await);
+    let _r = tx.send(1u64).await;
+    println!("try_recv 2 {:?}", try_recv0(&mut rx).await);
+}
+
+async fn async_num(n: u64) -> u64 {
+    n
+}
+
+async fn test_futures_unordered() {
+    let (tx, rx) = broadcast::channel(10);
+    let mut rx1 = tx.subscribe();
+    let mut rx2 = tx.subscribe();
+    let r = rx1.try_recv();
+    
+    let mut futs = FuturesUnordered::new();
+    futs.push(rx1.recv());
+    futs.push(rx2.recv());
+
+    
+
+    let _r = tx.send(1u64);
+    while !futs.is_empty() {
+        //let r = futs.select_next_some().await;
+        let r = futs.next().await;
+        println!("{:?}", r);
+    }
+    
+    std::process::exit(0);
+}
+
+
+
+
 #[tokio::main]
 async fn main() {
     use tracing_subscriber::EnvFilter;
@@ -205,8 +425,23 @@ async fn main() {
         // .with_timer(ChronoLocal::default())
         .with_env_filter(env_filter)
         .init();
-    
+    info!("");
+
+    test_over_flow().await;
+
     test_mem_size().await;
+    
+
+    test_futures_unordered().await;
+    test_try_recv().await;
+    
+    test_opt_size();
+    overflow_fn();
+    overflow_async().await;
+    let fut = Box::pin(overflow_async());
+    fut.await;
+
+    
     test_future().await;
     test_poll_try().await;
     let r = test_poll_try;
